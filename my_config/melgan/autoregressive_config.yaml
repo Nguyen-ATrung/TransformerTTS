@@ -30,9 +30,9 @@ head_drop_schedule:  # head-level dropout: how many heads to set to zero at trai
 - [0, 0]
 - [15_000, 1]
 reduction_factor_schedule:
-- [0, 10]
+- [0, 1]
 - [80_000, 1]
-max_steps: 50_000
+max_steps: 100_000
 batch_size: 16
 debug: false
 
@@ -48,5 +48,5 @@ n_predictions: 2  # autoregressive predictions take time
 prediction_start_step: 20_000
 audio_start_step: 40_000
 audio_prediction_frequency: 10_000 # converting to glim takes time
-git_hash: a43aeb8
+git_hash: 135bc54
 session_name: melgan

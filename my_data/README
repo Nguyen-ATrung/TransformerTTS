@@ -33,6 +33,11 @@ line, delimited by the pipe character (0x7c). The fields are:
 Each audio file is a single-channel 16-bit PCM WAV with a sample rate of
 22050 Hz.
 
+
+
+STATISTICS
+
+Total Clips            13,100
 Total Words            225,715
 Total Characters       1,308,674
 Total Duration         23:55:17

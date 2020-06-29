@@ -7,12 +7,16 @@ data
 .DS_Store
 private
 logs
-
+processed_data/
+my_data/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
-
+my_config/melgan/autoregressive_logs/
+my_config/melgan/autoregressive_weights/
+my_config/melgan/forward_logs/
+my_config/melgan/forward_weights/
 # C extensions
 *.so
 

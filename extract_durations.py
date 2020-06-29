@@ -76,8 +76,8 @@ train_predictions_dir.mkdir(exist_ok=True)
 val_predictions_dir.mkdir(exist_ok=True)
 config_manager.dump_config()
 script_batch_size = 5 * config['batch_size']
-val_has_files = len([batch_file for batch_file in val_predictions_dir.iterdir() if batch_file.suffix == '.npy'])
-train_has_files = len([batch_file for batch_file in train_predictions_dir.iterdir() if batch_file.suffix == '.npy'])
+val_has_files = len([batch_file for batch_file in val_target_dir.iterdir() if batch_file.suffix == '.npy'])
+train_has_files = len([batch_file for batch_file in train_target_dir.iterdir() if batch_file.suffix == '.npy'])
 model = config_manager.load_model()
 if args.recompute_pred or (val_has_files == 0) or (train_has_files == 0):
     if args.store_predictions:
@@ -118,7 +118,14 @@ if args.recompute_pred or (val_has_files == 0) or (train_has_files == 0):
         last_layer_key = f'Decoder_DenseBlock{n_dense}_CrossAttention'
     print(f'Extracting attention from layer {last_layer_key}')
     
+    summary_manager = SummaryManager(model=model, log_dir=config_manager.log_dir / writer_tag, config=config,
+                                 default_writer=writer_tag)
+    
+    # processing valid dataset
     iterator = tqdm(enumerate(val_dataset.all_batches()))
+    all_val_durations = np.array([])
+    new_alignments = []
+    total_val_samples = 0
     for c, (val_mel, val_text, val_stop) in iterator:
         iterator.set_description(f'Processing validation set')
         outputs = model.val_step(inp=val_text,
@@ -128,14 +135,44 @@ if args.recompute_pred or (val_has_files == 0) or (train_has_files == 0):
             batch = (val_mel.numpy(), val_text.numpy(), outputs['decoder_attention'][last_layer_key].numpy())
         else:
             mask = create_mel_padding_mask(val_mel)
-            out_val = tf.expand_dims(1 - tf.squeeze(create_mel_padding_mask(val_mel[:, 1:, :])), -1) * outputs[
-                'final_output'].numpy()
+            out_val = tf.expand_dims(1 - tf.squeeze(create_mel_padding_mask(val_mel[:, 1:, :])), -1) * outputs['final_output'].numpy()
             batch = (out_val.numpy(), val_text.numpy(), outputs['decoder_attention'][last_layer_key].numpy())
+            val_mel, val_text, val_alignments = batch
+            durations, unpad_mels, unpad_phonemes, final_align = get_durations_from_alignment(
+                batch_alignments=val_alignments,
+                mels=val_mel,
+                phonemes=val_text,
+                weighted=weighted,
+                binary=binary,
+                fill_gaps=fill_gaps,
+                fill_mode=fill_mode,
+                fix_jumps=fix_jumps)
+            batch_size = len(val_mel)
+            for i in range(batch_size):
+                sample_idx = total_val_samples + i
+                all_val_durations = np.append(all_val_durations, durations[i])
+                new_alignments.append(final_align[i])
+                sample = (unpad_mels[i], unpad_phonemes[i], durations[i])
+                np.save(str(val_target_dir / f'{sample_idx}_mel_phon_dur.npy'), sample)
+            total_val_samples += batch_size
         if args.store_predictions:
             with open(str(val_predictions_dir / f'{c}_batch_prediction.npy'), 'wb') as file:
                 pickle.dump(batch, file)
+
+    all_val_durations[all_val_durations >= 20] = 20
+    buckets = len(set(all_val_durations))
+    summary_manager.add_histogram(values=all_val_durations, tag='ValidationDurations', buckets=buckets)
+    for i, alignment in enumerate(new_alignments):
+        summary_manager.add_image(tag='ExtractedValidationAlignments',
+                                image=tf.expand_dims(tf.expand_dims(alignment, 0), -1),
+                                step=i)
+
     
+    # processing train dataset
     iterator = tqdm(enumerate(train_dataset.all_batches()))
+    all_train_durations = np.array([])
+    new_alignments = []
+    total_train_samples = 0
     for c, (train_mel, train_text, train_stop) in iterator:
         iterator.set_description(f'Processing training set')
         outputs = model.val_step(inp=train_text,
@@ -148,74 +185,35 @@ if args.recompute_pred or (val_has_files == 0) or (train_has_files == 0):
             out_train = tf.expand_dims(1 - tf.squeeze(create_mel_padding_mask(train_mel[:, 1:, :])), -1) * outputs[
                 'final_output'].numpy()
             batch = (out_train.numpy(), train_text.numpy(), outputs['decoder_attention'][last_layer_key].numpy())
+            train_mel, train_text, train_alignments = batch
+            durations, unpad_mels, unpad_phonemes, final_align = get_durations_from_alignment(
+                batch_alignments=train_alignments,
+                mels=train_mel,
+                phonemes=train_text,
+                weighted=weighted,
+                binary=binary,
+                fill_gaps=fill_gaps,
+                fill_mode=fill_mode,
+                fix_jumps=fix_jumps)
+            batch_size = len(train_mel)
+            for i in range(batch_size):
+                sample_idx = total_train_samples + i
+                sample = (unpad_mels[i], unpad_phonemes[i], durations[i])
+                new_alignments.append(final_align[i])
+                all_train_durations = np.append(all_train_durations, durations[i])
+                np.save(str(train_target_dir / f'{sample_idx}_mel_phon_dur.npy'), sample)
+            total_train_samples += batch_size
         if args.store_predictions:
             with open(str(train_predictions_dir / f'{c}_batch_prediction.npy'), 'wb') as file:
                 pickle.dump(batch, file)
 
-summary_manager = SummaryManager(model=model, log_dir=config_manager.log_dir / writer_tag, config=config,
-                                 default_writer=writer_tag)
-val_batch_files = [batch_file for batch_file in val_predictions_dir.iterdir() if batch_file.suffix == '.npy']
-iterator = tqdm(enumerate(val_batch_files))
-all_val_durations = np.array([])
-new_alignments = []
-total_val_samples = 0
-for c, batch_file in iterator:
-    iterator.set_description(f'Extracting validation alignments')
-    val_mel, val_text, val_alignments = np.load(str(batch_file), allow_pickle=True)
-    durations, unpad_mels, unpad_phonemes, final_align = get_durations_from_alignment(
-        batch_alignments=val_alignments,
-        mels=val_mel,
-        phonemes=val_text,
-        weighted=weighted,
-        binary=binary,
-        fill_gaps=fill_gaps,
-        fill_mode=fill_mode,
-        fix_jumps=fix_jumps)
-    batch_size = len(val_mel)
-    for i in range(batch_size):
-        sample_idx = total_val_samples + i
-        all_val_durations = np.append(all_val_durations, durations[i])
-        new_alignments.append(final_align[i])
-        sample = (unpad_mels[i], unpad_phonemes[i], durations[i])
-        np.save(str(val_target_dir / f'{sample_idx}_mel_phon_dur.npy'), sample)
-    total_val_samples += batch_size
-all_val_durations[all_val_durations >= 20] = 20
-buckets = len(set(all_val_durations))
-summary_manager.add_histogram(values=all_val_durations, tag='ValidationDurations', buckets=buckets)
-for i, alignment in enumerate(new_alignments):
-    summary_manager.add_image(tag='ExtractedValidationAlignments',
-                              image=tf.expand_dims(tf.expand_dims(alignment, 0), -1),
-                              step=i)
+    all_train_durations[all_train_durations >= 20] = 20
+    buckets = len(set(all_train_durations))
+    summary_manager.add_histogram(values=all_train_durations, tag='TrainDurations', buckets=buckets)
+    for i, alignment in enumerate(new_alignments):
+        summary_manager.add_image(tag='ExtractedTrainingAlignments', image=tf.expand_dims(tf.expand_dims(alignment, 0), -1),
+                                step=i)
+    print('Done.')
 
-train_batch_files = [batch_file for batch_file in train_predictions_dir.iterdir() if batch_file.suffix == '.npy']
-iterator = tqdm(enumerate(train_batch_files))
-all_train_durations = np.array([])
-new_alignments = []
-total_train_samples = 0
-for c, batch_file in iterator:
-    iterator.set_description(f'Extracting training alignments')
-    train_mel, train_text, train_alignments = np.load(str(batch_file), allow_pickle=True)
-    durations, unpad_mels, unpad_phonemes, final_align = get_durations_from_alignment(
-        batch_alignments=train_alignments,
-        mels=train_mel,
-        phonemes=train_text,
-        weighted=weighted,
-        binary=binary,
-        fill_gaps=fill_gaps,
-        fill_mode=fill_mode,
-        fix_jumps=fix_jumps)
-    batch_size = len(train_mel)
-    for i in range(batch_size):
-        sample_idx = total_train_samples + i
-        sample = (unpad_mels[i], unpad_phonemes[i], durations[i])
-        new_alignments.append(final_align[i])
-        all_train_durations = np.append(all_train_durations, durations[i])
-        np.save(str(train_target_dir / f'{sample_idx}_mel_phon_dur.npy'), sample)
-    total_train_samples += batch_size
-all_train_durations[all_train_durations >= 20] = 20
-buckets = len(set(all_train_durations))
-summary_manager.add_histogram(values=all_train_durations, tag='TrainDurations', buckets=buckets)
-for i, alignment in enumerate(new_alignments):
-    summary_manager.add_image(tag='ExtractedTrainingAlignments', image=tf.expand_dims(tf.expand_dims(alignment, 0), -1),
-                              step=i)
-print('Done.')
+else:
+    print('Directory is not empty')
