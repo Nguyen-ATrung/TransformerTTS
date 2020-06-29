@@ -141,3 +141,5 @@ dmypy.json
 
 demo/
 demo_minimal/
+None/
+*.wav
