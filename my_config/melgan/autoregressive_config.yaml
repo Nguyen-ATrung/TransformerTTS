@@ -48,5 +48,5 @@ n_predictions: 2  # autoregressive predictions take time
 prediction_start_step: 20_000
 audio_start_step: 40_000
 audio_prediction_frequency: 10_000 # converting to glim takes time
-git_hash: 135bc54
+git_hash: 3d58d25
 session_name: melgan

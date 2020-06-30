@@ -13,6 +13,10 @@ from utils.decorators import ignore_exception, time_it
 from utils.scheduling import piecewise_linear_schedule, reduction_schedule
 from utils.logging import SummaryManager
 from model.transformer_utils import create_mel_padding_mask
+from trains import Task
+
+task = Task.init(project_name = 'TTS',
+                task_name = 'English - Stage 1')
 
 np.random.seed(42)
 tf.random.set_seed(42)

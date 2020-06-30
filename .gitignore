@@ -19,7 +19,7 @@ my_config/melgan/forward_logs/
 my_config/melgan/forward_weights/
 # C extensions
 *.so
-
+*.tar.gz
 # Distribution / packaging
 .Python
 build/
