@@ -1,6 +1,6 @@
 # PATHS: change accordingly
 data_directory: my_data/   # path to wavs and metafile directory
-log_directory: my_config/    # weights and logs are stored here
+log_directory: /root/TransformerTTS/my_config/   # weights and logs are stored here
 train_data_directory: processed_data/         # optional: alternative directory where to store processed data (default is data_dir)
 wav_subdir_name: wavs              # subfolder in data_directory containing wavs files
 metadata_filename: metadata.csv    # name of metadata file under data_directory

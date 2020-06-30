@@ -11,6 +11,11 @@ from utils.decorators import ignore_exception, time_it
 from utils.scheduling import piecewise_linear_schedule, reduction_schedule
 from utils.logging import SummaryManager
 
+from trains import Task
+
+task = Task.init(project_name = 'TTS',
+                task_name = 'English - Stage 1 - AutoRegressive')
+
 np.random.seed(42)
 tf.random.set_seed(42)
 
@@ -33,7 +38,7 @@ def validate(model,
              val_dataset,
              summary_manager):
     val_loss = {'loss': 0.}
-    norm = 0.
+    norm = 0
     for val_mel, val_text, val_stop in val_dataset.all_batches():
         model_out = model.val_step(inp=val_text,
                                    tar=val_mel,
@@ -92,7 +97,7 @@ train_dataset = Dataset(samples=train_samples,
                         shuffle=True)
 val_dataset = Dataset(samples=val_samples,
                       preprocessor=data_prep,
-                      batch_size=config['batch_size'],
+                      batch_size=config['valid_batch_size'],
                       mel_channels=config['mel_channels'],
                       shuffle=False)
 
@@ -103,8 +108,8 @@ checkpoint = tf.train.Checkpoint(step=tf.Variable(1),
                                  optimizer=model.optimizer,
                                  net=model)
 manager = tf.train.CheckpointManager(checkpoint, str(config_manager.weights_dir),
-                                     max_to_keep=config['keep_n_weights'],
-                                     keep_checkpoint_every_n_hours=config['keep_checkpoint_every_n_hours'])
+                                     max_to_keep=config['keep_n_weights'])
+                                    #  keep_checkpoint_every_n_hours=config['keep_checkpoint_every_n_hours']
 checkpoint.restore(manager.latest_checkpoint)
 if manager.latest_checkpoint:
     print(f'\nresuming training from step {model.step} ({manager.latest_checkpoint})')
