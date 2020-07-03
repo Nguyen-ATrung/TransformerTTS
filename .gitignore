@@ -65,6 +65,8 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 
+my_config/melgan/old_forward_weights/
+
 # Translations
 *.mo
 *.pot
